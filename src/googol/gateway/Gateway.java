@@ -99,7 +99,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
     private final transient AtomicInteger roundRobin = new AtomicInteger();
 
     /** Clientes registados para receber estatísticas por callback. */
-    private final transient List<StatsCallback> subscribers = new CopyOnWriteArrayList<>();
+    private final transient CopyOnWriteArrayList<StatsCallback> subscribers = new CopyOnWriteArrayList<>();
     /** Últimas estatísticas enviadas (só usada pela thread do {@link #notifier}). */
     private transient SystemStats lastStats;
     /**
@@ -290,14 +290,21 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
         return buildStats();
     }
 
+    /**
+     * Regista um cliente para receber estatísticas. É <b>idempotente</b>: subscrever
+     * duas vezes não duplica nada. Isto permite ao cliente voltar a subscrever
+     * periodicamente — se a Gateway tiver reiniciado (e perdido a lista de
+     * subscritores), a subscrição é refeita sozinha.
+     */
     @Override
     public void subscribeStats(StatsCallback callback) throws RemoteException {
-        subscribers.add(callback);
-        // Envia logo as estatísticas atuais ao novo subscritor.
-        notifier.submit(() -> {
-            SystemStats stats = lastStats != null ? lastStats : buildStats();
-            sendStats(callback, stats);
-        });
+        if (subscribers.addIfAbsent(callback)) {
+            // Novo subscritor: envia-lhe logo as estatísticas atuais.
+            notifier.submit(() -> {
+                SystemStats stats = lastStats != null ? lastStats : buildStats();
+                sendStats(callback, stats);
+            });
+        }
     }
 
     @Override

@@ -135,7 +135,7 @@ public class Downloader {
         multicast.send(new IndexMessage(sessionId, seqNumber.incrementAndGet(), page));
         gateway().addURLs(page.getLinks());
         System.out.println(logPrefix + "Indexado " + url + " (" + page.getWords().size() + " palavras, "
-                + page.getLinks().size() + " ligações)");
+                + page.getLinks().size() + " ligações)" + multicast.pendingSummary());
     }
 
     private void retryLoop() {

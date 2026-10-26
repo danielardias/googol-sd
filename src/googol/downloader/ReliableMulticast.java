@@ -92,6 +92,21 @@ public class ReliableMulticast {
         return queue == null ? 0 : queue.size();
     }
 
+    /**
+     * Resumo das mensagens por entregar, para mostrar no ecrã
+     * (ex.: " | por entregar: barrel2=37"). Vazio se não houver nenhuma.
+     */
+    public synchronized String pendingSummary() {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, ArrayDeque<IndexMessage>> entry : pending.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                sb.append(sb.length() == 0 ? " | por entregar: " : ", ")
+                        .append(entry.getKey()).append('=').append(entry.getValue().size());
+            }
+        }
+        return sb.toString();
+    }
+
     private int totalPending() {
         int total = 0;
         for (ArrayDeque<IndexMessage> queue : pending.values()) {
