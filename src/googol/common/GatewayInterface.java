@@ -15,9 +15,14 @@ public interface GatewayInterface extends Remote {
 
     /**
      * Funcionalidade 1 — pede a indexação de um URL introduzido pelo utilizador.
-     * O URL é colocado na fila e será visitado por um Downloader.
+     * O URL é colocado no <b>início</b> da fila (tem prioridade sobre os URLs
+     * encontrados automaticamente) e será visitado por um Downloader.
+     *
+     * @return {@code true} se o URL foi aceite; {@code false} se já era conhecido
+     *         (já indexado ou já na fila)
+     * @throws IllegalArgumentException se o URL não começar por http:// ou https://
      */
-    void indexURL(String url) throws RemoteException;
+    boolean indexURL(String url) throws RemoteException;
 
     /**
      * Funcionalidades 3 e 4, com resultados de 10 em 10 — pesquisa páginas que

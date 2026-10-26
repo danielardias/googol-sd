@@ -2,17 +2,14 @@ package googol.barrel;
 
 import googol.common.IndexMessage;
 import googol.common.PageData;
+import googol.common.Persistence;
 import googol.common.SearchPage;
 import googol.common.SearchResult;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -185,34 +182,16 @@ class BarrelStorage {
         return state.backlinks.getOrDefault(url, Set.of()).size();
     }
 
-    /**
-     * Grava o estado num ficheiro temporário e depois substitui o ficheiro
-     * verdadeiro de uma só vez. Se o Barrel avariar a meio da escrita, o
-     * ficheiro antigo continua intacto (nunca fica meio escrito).
-     */
+    /** Grava o estado em disco (de forma segura contra crashes, ver {@link Persistence}). */
     private void save() throws IOException {
-        Path parent = file.toAbsolutePath().getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        Path tmp = Path.of(file.toString() + ".tmp");
-        try (ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(tmp))) {
-            out.writeObject(state);
-        }
-        try {
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Persistence.save(state, file);
     }
 
     /** Lê o estado do disco; se não existir (ou estiver corrompido), começa vazio. */
     private State load() {
-        if (!Files.exists(file)) {
-            return new State();
-        }
-        try (ObjectInputStream in = new ObjectInputStream(Files.newInputStream(file))) {
-            return (State) in.readObject();
+        try {
+            State loaded = Persistence.load(file);
+            return loaded != null ? loaded : new State();
         } catch (IOException | ClassNotFoundException e) {
             System.err.println("[Barrel] Aviso: não foi possível ler " + file + " (" + e.getMessage()
                     + "). A começar com índice vazio.");

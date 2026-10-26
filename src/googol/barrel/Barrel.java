@@ -44,6 +44,15 @@ public class Barrel extends UnicastRemoteObject implements BarrelInterface {
         this.storage = storage;
     }
 
+    /**
+     * Cria (e exporta para RMI) um Barrel que guarda os dados em {@code dataFile}.
+     *
+     * @param reset se {@code true}, apaga os dados existentes
+     */
+    public static Barrel create(String id, Path dataFile, boolean reset) throws IOException {
+        return new Barrel(id, new BarrelStorage(dataFile, reset));
+    }
+
     @Override
     public void receive(IndexMessage message) throws RemoteException {
         try {
@@ -88,10 +97,10 @@ public class Barrel extends UnicastRemoteObject implements BarrelInterface {
             System.setProperty("java.rmi.server.hostname", config.get("rmi.hostname"));
 
             String id = config.get("barrel.id");
-            BarrelStorage storage = new BarrelStorage(Path.of(config.get("barrel.data.file")), reset);
-            Barrel barrel = new Barrel(id, storage);
-            System.out.println("[" + id + "] Pronto. " + storage.getPageCount() + " páginas e "
-                    + storage.getIndexSize() + " palavras carregadas do disco." + (reset ? " (dados apagados com --reset)" : ""));
+            Barrel barrel = create(id, Path.of(config.get("barrel.data.file")), reset);
+            System.out.println("[" + id + "] Pronto. " + barrel.storage.getPageCount() + " páginas e "
+                    + barrel.storage.getIndexSize() + " palavras carregadas do disco."
+                    + (reset ? " (dados apagados com --reset)" : ""));
 
             registerLoop(barrel, id, config);
         } catch (Exception e) {
