@@ -1,0 +1,11 @@
+# Ficheiros compilados (gerados pelo javac, não vão para o git)
+out/
+*.class
+
+# Dados gerados pelos Barrels e pela Gateway (cada máquina tem os seus)
+data/*.dat
+
+# Ficheiros dos editores
+.idea/
+*.iml
+.vscode/
