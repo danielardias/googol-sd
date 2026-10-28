@@ -146,14 +146,14 @@ public class Client {
         try {
             gateway().subscribeStats(receiver);
             if (statsWarned) {
-                System.out.println("\n[Ligação à Gateway restabelecida — estatísticas retomadas]");
+                System.out.println("\n[Ligação à Gateway restabelecida - estatísticas retomadas]");
             }
             statsWarned = false;
         } catch (RemoteException e) {
             gateway = null;
             if (!statsWarned) {
                 statsWarned = true;
-                System.out.println("\n[Gateway indisponível — as estatísticas serão retomadas quando voltar]");
+                System.out.println("\n[Gateway indisponível - as estatísticas serão retomadas quando voltar]");
             }
         }
     }
@@ -177,7 +177,7 @@ public class Client {
                 last = e;
                 gateway = null; // a referência pode estar morta (Gateway reiniciou)
                 if (attempt < retryAttempts) {
-                    System.out.println("  [" + rootMessage(e) + " — nova tentativa " + (attempt + 1) + "/"
+                    System.out.println("  [" + rootMessage(e) + " - nova tentativa " + (attempt + 1) + "/"
                             + retryAttempts + " em " + retryDelayMs + " ms]");
                     try {
                         Thread.sleep(retryDelayMs);

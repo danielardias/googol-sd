@@ -81,9 +81,28 @@ public class BarrelTeste {
         check("Após reinício, continua a ignorar mensagens já recebidas",
                 !recovered.apply(dup));
 
+        // Mais de 200 páginas: obriga a gravar a fotografia completa e a esvaziar o registo
+        for (int i = 0; i < BarrelStorage.SNAPSHOT_EVERY + 50; i++) {
+            recovered.apply(msg("http://s" + i + ".pt", "S" + i, Set.of("fotografia"), List.of()));
+        }
+        Path log = Path.of(file + ".log");
+        BarrelStorage afterSnapshot = new BarrelStorage(file, false);
+        check("Após reinício, recupera páginas da fotografia E do registo (250 páginas)",
+                afterSnapshot.search(List.of("fotografia"), 0).getTotalResults() == BarrelStorage.SNAPSHOT_EVERY + 50
+                        && afterSnapshot.search(List.of("universidade"), 0).getTotalResults() == 3);
+
+        // Simula um crash a meio de uma escrita: o fim do registo fica com lixo incompleto
+        afterSnapshot.apply(msg("http://antes-do-crash.pt", "X", Set.of("crash"), List.of()));
+        Files.write(log, new byte[]{0, 0, 1, 0, 42, 42}, java.nio.file.StandardOpenOption.APPEND);
+        BarrelStorage afterCrash = new BarrelStorage(file, false);
+        check("Registo com escrita incompleta (crash): recupera o que estava completo e ignora o resto",
+                afterCrash.search(List.of("crash"), 0).getTotalResults() == 1
+                        && afterCrash.search(List.of("fotografia"), 0).getTotalResults() == BarrelStorage.SNAPSHOT_EVERY + 50);
+
         // --reset: começa limpo
         BarrelStorage clean = new BarrelStorage(file, true);
-        check("Arrancar com --reset apaga os dados de teste", clean.getIndexSize() == 0);
+        check("Arrancar com --reset apaga os dados de teste (fotografia e registo)",
+                clean.getIndexSize() == 0 && !Files.exists(log));
 
         System.out.println();
         System.out.println("Total: " + passed + " PASS, " + failed + " FAIL");
