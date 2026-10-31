@@ -122,7 +122,16 @@ class BarrelStorage {
         applyInMemory(message);
         messagesSinceSnapshot++;
         if (messagesSinceSnapshot >= SNAPSHOT_EVERY) {
-            snapshot();
+            try {
+                snapshot();
+            } catch (IOException e) {
+                // A página já está segura no registo: a falha da fotografia (ex.: antivírus a
+                // analisar o ficheiro) não é falha da página. Tenta-se outra vez na seguinte.
+                if (messagesSinceSnapshot % SNAPSHOT_EVERY == 0) {
+                    System.err.println("[Barrel] Aviso: a fotografia do índice está a falhar (" + e.getMessage()
+                            + "); as páginas continuam seguras no registo.");
+                }
+            }
         }
         return true;
     }

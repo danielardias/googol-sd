@@ -169,7 +169,7 @@ public class GatewayTeste {
         Gateway lenta = new Gateway(f2, false, 60_000);              // gravação periódica só ao fim de 60 s
         lenta.indexURL("http://pedido-do-utilizador.pt");
         check("Pedido de indexação do utilizador fica em disco de imediato (sem esperar pela gravação periódica)",
-                "http://pedido-do-utilizador.pt".equals(new Gateway(f2, false).takeURL()));
+                "http://pedido-do-utilizador.pt".equals(lerPrimeiroURL(f2)));
         lenta.shutdown();
 
         Path f3 = dir.resolve("g3.dat");
@@ -177,7 +177,7 @@ public class GatewayTeste {
         rapida.addURLs(List.of("http://descoberto.pt"));
         Thread.sleep(700);
         check("URLs descobertos são gravados pela gravação periódica (sem shutdown)",
-                "http://descoberto.pt".equals(new Gateway(f3, false).takeURL()));
+                "http://descoberto.pt".equals(lerPrimeiroURL(f3)));
 
         List<String> muitos = new ArrayList<>();
         for (int i = 0; i < 100_000; i++) {
@@ -192,6 +192,24 @@ public class GatewayTeste {
         System.out.printf("  (takeURL com 100 000 URLs conhecidos: %.3f ms em média)%n", msPorTake);
         check("Desempenho: takeURL continua rápido com 100 000 URLs conhecidos (< 5 ms)", msPorTake < 5);
         rapida.shutdown();
+
+        // Falha passageira de gravação (como o antivírus do Windows a bloquear o ficheiro):
+        // uma pasta no lugar do ficheiro faz a gravação falhar até ser retirada.
+        Path f5 = dir.resolve("g5.dat");
+        Gateway bloqueada = new Gateway(f5, false, 150);
+        Files.createDirectories(f5.resolve("bloqueio"));
+        java.io.PrintStream errOriginal = System.err;
+        java.io.ByteArrayOutputStream errCapturado = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(errCapturado, true));
+        bloqueada.addURLs(List.of("http://sobrevive.pt"));
+        Thread.sleep(450);                                       // 2 a 3 gravações falhadas
+        Files.delete(f5.resolve("bloqueio"));
+        Files.delete(f5);                                        // o "antivírus" larga o ficheiro
+        Thread.sleep(450);                                       // a volta seguinte grava
+        System.setErr(errOriginal);
+        check("Falha passageira de gravação: sem aviso no ecrã, e o estado é gravado na volta seguinte",
+                errCapturado.size() == 0 && "http://sobrevive.pt".equals(lerPrimeiroURL(f5)));
+        bloqueada.shutdown();
 
         // ---------------- Termos com pontuação ----------------
         Gateway gwTermos = new Gateway(dir.resolve("g4.dat"), false);
@@ -216,6 +234,19 @@ public class GatewayTeste {
         System.out.println();
         System.out.println("Total: " + passed + " PASS, " + failed + " FAIL");
         System.exit(failed > 0 ? 1 : 0);
+    }
+
+    /**
+     * Lê, sem alterar nada, o primeiro URL da fila gravada em {@code file}: abre uma
+     * Gateway que nunca grava (intervalo de 1 hora) e retira-a do RMI sem a desligar
+     * com shutdown(), que gravaria o estado. Assim nunca há duas Gateways a gravar o
+     * mesmo ficheiro (no Windows, a segunda é bloqueada pelo sistema de ficheiros).
+     */
+    private static String lerPrimeiroURL(Path file) throws Exception {
+        Gateway leitora = new Gateway(file, false, 3_600_000);
+        String url = leitora.takeURL();
+        UnicastRemoteObject.unexportObject(leitora, true);
+        return url;
     }
 
     private static PageData page(String url, Set<String> words, List<String> links) {

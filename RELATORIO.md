@@ -100,7 +100,7 @@ Na prática, os dois elementos acompanharam o desenvolvimento de todos os compon
 
 ## 5. Testes
 
-Os testes automáticos (`BarrelTeste`, `GatewayTeste`, `DownloaderTeste`, `ClientTeste`; 69 no total) usam RMI real, um servidor Web local e avarias simuladas. Os testes manuais foram feitos em duas máquinas.
+Os testes automáticos (`BarrelTeste`, `GatewayTeste`, `DownloaderTeste`, `ClientTeste`; 70 no total) usam RMI real, um servidor Web local e avarias simuladas. Os testes manuais foram feitos em duas máquinas.
 
 | # | Descrição | Tipo | Resultado |
 |---|---|---|---|

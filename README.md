@@ -165,7 +165,7 @@ java -cp "out;lib\*" googol.gateway.GatewayTeste
 java -cp "out;lib\*" googol.downloader.DownloaderTeste
 java -cp "out;lib\*" googol.client.ClientTeste
 ```
-Cada um termina com `Total: N PASS, 0 FAIL` (14 + 24 + 20 + 11 = 69 testes).
+Cada um termina com `Total: N PASS, 0 FAIL` (14 + 25 + 20 + 11 = 70 testes).
 Os testes usam portos próprios (1196–1199) e pastas temporárias: **não interferem**
 com os dados do sistema, mas não devem correr ao mesmo tempo que a Gateway
 se esta usar um desses portos.

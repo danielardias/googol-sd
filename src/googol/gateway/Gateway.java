@@ -115,7 +115,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
 
     /** O estado mudou desde a última gravação? (protegido pelo cadeado da Gateway) */
     private transient boolean dirty = false;
-    /** Thread que grava o estado periodicamente (ver {@link #flushIfDirty()}). */
+    /** Thread que grava o estado periodicamente (ver {@link #flush()}). */
     private final transient ScheduledExecutorService saver = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "gateway-save");
         t.setDaemon(true);
@@ -142,7 +142,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
             Files.deleteIfExists(stateFile);
         }
         this.state = loadState();
-        saver.scheduleWithFixedDelay(this::flushIfDirty, saveIntervalMs, saveIntervalMs, TimeUnit.MILLISECONDS);
+        saver.scheduleWithFixedDelay(this::flush, saveIntervalMs, saveIntervalMs, TimeUnit.MILLISECONDS);
     }
 
     // ------------------------------------------------------------------
@@ -160,8 +160,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
                 return false;
             }
             state.queue.addFirst(normalized); // pedidos do utilizador têm prioridade
-            saveNow(); // um pedido do utilizador nunca se pode perder: grava já
+            markDirty();
         }
+        flush(); // um pedido do utilizador nunca se pode perder: grava já (fora do cadeado)
         System.out.println("[Gateway] Novo URL para indexar (pedido do utilizador): " + normalized);
         return true;
     }
@@ -407,8 +408,13 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
 
     /** Grava o estado pendente, para as threads internas e retira a Gateway do RMI (usado nos testes). */
     public void shutdown() {
-        saver.shutdownNow();
-        flushIfDirty();
+        saver.shutdown();                      // não interrompe uma gravação em curso: espera que acabe
+        try {
+            saver.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        flush();
         monitor.shutdownNow();
         notifier.shutdownNow();
         try {
@@ -441,20 +447,54 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
         dirty = true;
     }
 
-    /** Grava o estado já. Chamado com o cadeado da Gateway. */
-    private void saveNow() {
-        try {
-            Persistence.save(state, stateFile);
-            dirty = false;
-        } catch (IOException e) {
-            System.err.println("[Gateway] Aviso: não foi possível gravar o estado (" + e.getMessage() + ")");
-        }
-    }
+    /**
+     * Garante que só uma thread escreve o ficheiro de cada vez (a thread periódica e
+     * a de um pedido do utilizador podiam tentar ao mesmo tempo). Ordem dos cadeados,
+     * sempre a mesma para não haver bloqueio mútuo: primeiro este, depois o da Gateway.
+     */
+    private final transient Object writeLock = new Object();
+    /** Falhas de gravação seguidas (só se avisa a partir de {@link #WARN_AFTER_FAILURES}). */
+    private transient int failedSaves = 0;
+    private static final int WARN_AFTER_FAILURES = 5;
 
-    /** Grava o estado se tiver mudado desde a última gravação (thread periódica). */
-    private synchronized void flushIfDirty() {
-        if (dirty) {
-            saveNow();
+    /**
+     * Grava o estado, se tiver mudado. A cópia do estado (serialização) é feita com o
+     * cadeado da Gateway; a escrita no disco é feita FORA dele, para que os Downloaders
+     * e as pesquisas nunca esperem pelo disco nem pelo antivírus.
+     * <p>
+     * Se a escrita falhar (por exemplo, no Windows, o antivírus a analisar o ficheiro
+     * nesse instante), o estado volta a ficar marcado como alterado e é gravado na
+     * volta seguinte. Só se avisa ao fim de {@value #WARN_AFTER_FAILURES} falhas
+     * seguidas, porque aí o problema já não é passageiro (ex.: disco cheio).
+     */
+    private void flush() {
+        synchronized (writeLock) {
+            byte[] data;
+            synchronized (this) {
+                if (!dirty) {
+                    return;
+                }
+                try {
+                    data = Persistence.serialize(state);
+                } catch (IOException e) {
+                    System.err.println("[Gateway] Aviso: não foi possível preparar a gravação do estado (" + e.getMessage() + ")");
+                    return;
+                }
+                dirty = false;
+            }
+            try {
+                Persistence.saveBytes(data, stateFile);
+                failedSaves = 0;
+            } catch (IOException e) {
+                synchronized (this) {
+                    dirty = true; // tenta outra vez na próxima volta
+                }
+                failedSaves++;
+                if (failedSaves >= WARN_AFTER_FAILURES) {
+                    System.err.println("[Gateway] Aviso: o estado não é gravado há " + failedSaves
+                            + " tentativas seguidas (" + e.getMessage() + ")");
+                }
+            }
         }
     }
 
