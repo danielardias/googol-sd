@@ -8,6 +8,7 @@ import googol.common.QueueInterface;
 import googol.common.SearchPage;
 import googol.common.StatsCallback;
 import googol.common.SystemStats;
+import googol.common.Tokenizer;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -109,17 +110,39 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
     private final transient ExecutorService notifier = Executors.newSingleThreadExecutor();
     private final transient ScheduledExecutorService monitor = Executors.newSingleThreadScheduledExecutor();
 
+    /** Intervalo de gravação do estado usado quando não se indica outro. */
+    public static final long DEFAULT_SAVE_INTERVAL_MS = 1000;
+
+    /** O estado mudou desde a última gravação? (protegido pelo cadeado da Gateway) */
+    private transient boolean dirty = false;
+    /** Thread que grava o estado periodicamente (ver {@link #flushIfDirty()}). */
+    private final transient ScheduledExecutorService saver = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "gateway-save");
+        t.setDaemon(true);
+        return t;
+    });
+
     /**
      * @param stateFile ficheiro onde a Gateway guarda o seu estado
      * @param reset     se {@code true}, apaga o estado anterior
      */
     public Gateway(Path stateFile, boolean reset) throws IOException {
+        this(stateFile, reset, DEFAULT_SAVE_INTERVAL_MS);
+    }
+
+    /**
+     * @param stateFile      ficheiro onde a Gateway guarda o seu estado
+     * @param reset          se {@code true}, apaga o estado anterior
+     * @param saveIntervalMs de quanto em quanto tempo o estado alterado é gravado
+     */
+    public Gateway(Path stateFile, boolean reset, long saveIntervalMs) throws IOException {
         super();
         this.stateFile = stateFile;
         if (reset) {
             Files.deleteIfExists(stateFile);
         }
         this.state = loadState();
+        saver.scheduleWithFixedDelay(this::flushIfDirty, saveIntervalMs, saveIntervalMs, TimeUnit.MILLISECONDS);
     }
 
     // ------------------------------------------------------------------
@@ -137,7 +160,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
                 return false;
             }
             state.queue.addFirst(normalized); // pedidos do utilizador têm prioridade
-            saveState();
+            saveNow(); // um pedido do utilizador nunca se pode perder: grava já
         }
         System.out.println("[Gateway] Novo URL para indexar (pedido do utilizador): " + normalized);
         return true;
@@ -147,7 +170,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
     public synchronized String takeURL() throws RemoteException {
         String url = state.queue.pollFirst();
         if (url != null) {
-            saveState();
+            markDirty();
         }
         return url;
     }
@@ -163,7 +186,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
             }
         }
         if (changed) {
-            saveState();
+            markDirty();
         }
     }
 
@@ -218,11 +241,14 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
 
     @Override
     public SearchPage search(List<String> terms, int pageNumber) throws RemoteException {
+        // Os termos são divididos com a mesma regra usada na indexação (Tokenizer):
+        // "Coimbra!" -> "coimbra"; "rock-n-roll" -> "rock", "n", "roll".
         List<String> normalized = new ArrayList<>();
         for (String term : terms) {
-            String t = term.toLowerCase().trim();
-            if (!t.isEmpty()) {
-                normalized.add(t);
+            for (String t : Tokenizer.tokens(term)) {
+                if (!normalized.contains(t)) {
+                    normalized.add(t);
+                }
             }
         }
         if (normalized.isEmpty()) {
@@ -233,7 +259,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
         if (pageNumber == 0) {
             synchronized (this) {
                 state.searchCounts.merge(String.join(" ", normalized), 1, Integer::sum);
-                saveState();
+                markDirty();
             }
         }
         SearchPage result = callBarrel(barrel -> barrel.search(normalized, pageNumber), true);
@@ -379,8 +405,10 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
         monitor.scheduleWithFixedDelay(this::requestStatsRefresh, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
     }
 
-    /** Para as threads internas e retira a Gateway do RMI (usado nos testes). */
+    /** Grava o estado pendente, para as threads internas e retira a Gateway do RMI (usado nos testes). */
     public void shutdown() {
+        saver.shutdownNow();
+        flushIfDirty();
         monitor.shutdownNow();
         notifier.shutdownNow();
         try {
@@ -394,12 +422,39 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
     // Persistência
     // ------------------------------------------------------------------
 
-    /** Grava o estado; chamado sempre com o lock da Gateway ({@code synchronized}). */
-    private void saveState() {
+    /*
+     * Gravação do estado.
+     *
+     * Gravar o ficheiro inteiro a cada takeURL/addURLs tornava a Gateway cada vez
+     * mais lenta à medida que a fila crescia (180 ms por takeURL com 100 000 URLs
+     * conhecidos, sempre com o cadeado da Gateway fechado). Por isso:
+     *  - takeURL, addURLs e as pesquisas só MARCAM o estado como alterado;
+     *  - uma thread grava-o de saveIntervalMs em saveIntervalMs, se tiver mudado;
+     *  - um pedido de indexação do UTILIZADOR é gravado de imediato (nunca se perde).
+     * Num crash perde-se no máximo o último intervalo: URLs já entregues voltam a
+     * estar na fila (são indexados outra vez, sem efeito no índice, que é feito de
+     * conjuntos) e alguns links descobertos nesse intervalo não chegam à fila.
+     */
+
+    /** Marca o estado como alterado (gravado pela thread periódica). Chamado com o cadeado da Gateway. */
+    private void markDirty() {
+        dirty = true;
+    }
+
+    /** Grava o estado já. Chamado com o cadeado da Gateway. */
+    private void saveNow() {
         try {
             Persistence.save(state, stateFile);
+            dirty = false;
         } catch (IOException e) {
             System.err.println("[Gateway] Aviso: não foi possível gravar o estado (" + e.getMessage() + ")");
+        }
+    }
+
+    /** Grava o estado se tiver mudado desde a última gravação (thread periódica). */
+    private synchronized void flushIfDirty() {
+        if (dirty) {
+            saveNow();
         }
     }
 
@@ -429,7 +484,8 @@ public class Gateway extends UnicastRemoteObject implements GatewayInterface, Qu
             boolean reset = Arrays.asList(args).contains("--reset");
             System.setProperty("java.rmi.server.hostname", config.get("rmi.hostname"));
 
-            Gateway gateway = new Gateway(Path.of(config.get("gateway.state.file")), reset);
+            Gateway gateway = new Gateway(Path.of(config.get("gateway.state.file")), reset,
+                    config.getInt("gateway.save.interval.ms", (int) DEFAULT_SAVE_INTERVAL_MS));
             int port = config.getInt("gateway.port");
             Registry registry = LocateRegistry.createRegistry(port);
             registry.rebind(config.get("gateway.name"), gateway);

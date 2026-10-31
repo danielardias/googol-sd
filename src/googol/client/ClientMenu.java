@@ -74,6 +74,9 @@ public class ClientMenu {
             } catch (RemoteException e) {
                 System.out.println("Não foi possível concluir a operação: " + Client.rootMessage(e)
                         + ". Tente novamente mais tarde.");
+            } catch (RuntimeException e) {
+                // Nenhum erro inesperado pode fechar o cliente: mostra-se e volta-se ao menu.
+                System.out.println("Erro inesperado: " + Client.rootMessage(e) + ". Volte a tentar.");
             }
         }
     }

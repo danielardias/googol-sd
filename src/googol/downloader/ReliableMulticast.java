@@ -144,7 +144,8 @@ public class ReliableMulticast {
                 barrel.receive(queue.peekFirst());
                 queue.pollFirst(); // ACK recebido: pode sair da fila
                 delivered++;
-            } catch (RemoteException e) {
+            } catch (RemoteException | RuntimeException e) {
+                // Sem ACK (avaria por omissão ou erro no Barrel): a mensagem fica na fila.
                 stubs.remove(barrelId); // a referência pode estar morta; será pedida de novo à Gateway
                 warnOnce(barrelId, "não respondeu");
                 return;

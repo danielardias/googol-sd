@@ -163,6 +163,47 @@ public class GatewayTeste {
         }
         check("Sem nenhum Barrel ativo, a pesquisa dá um erro claro (não bloqueia)", error);
 
+        // ---------------- Gravação do estado ----------------
+        // (Gateways locais, fora do RMI, para testar só a persistência.)
+        Path f2 = dir.resolve("g2.dat");
+        Gateway lenta = new Gateway(f2, false, 60_000);              // gravação periódica só ao fim de 60 s
+        lenta.indexURL("http://pedido-do-utilizador.pt");
+        check("Pedido de indexação do utilizador fica em disco de imediato (sem esperar pela gravação periódica)",
+                "http://pedido-do-utilizador.pt".equals(new Gateway(f2, false).takeURL()));
+        lenta.shutdown();
+
+        Path f3 = dir.resolve("g3.dat");
+        Gateway rapida = new Gateway(f3, false, 200);                // gravação periódica a cada 200 ms
+        rapida.addURLs(List.of("http://descoberto.pt"));
+        Thread.sleep(700);
+        check("URLs descobertos são gravados pela gravação periódica (sem shutdown)",
+                "http://descoberto.pt".equals(new Gateway(f3, false).takeURL()));
+
+        List<String> muitos = new ArrayList<>();
+        for (int i = 0; i < 100_000; i++) {
+            muitos.add("https://exemplo.pt/pagina/" + i);
+        }
+        rapida.addURLs(muitos);
+        long t0 = System.nanoTime();
+        for (int i = 0; i < 1000; i++) {
+            rapida.takeURL();
+        }
+        double msPorTake = (System.nanoTime() - t0) / 1000 / 1e6;
+        System.out.printf("  (takeURL com 100 000 URLs conhecidos: %.3f ms em média)%n", msPorTake);
+        check("Desempenho: takeURL continua rápido com 100 000 URLs conhecidos (< 5 ms)", msPorTake < 5);
+        rapida.shutdown();
+
+        // ---------------- Termos com pontuação ----------------
+        Gateway gwTermos = new Gateway(dir.resolve("g4.dat"), false);
+        Barrel b3 = Barrel.create("barrel3", dir.resolve("b3.dat"), false);
+        gwTermos.registerBarrel("barrel3", b3);
+        b3.receive(new IndexMessage("teste", ++seq, page("http://rock.pt", Set.of("rock", "n", "roll", "coimbra"), List.of())));
+        check("Pesquisa com pontuação ('Coimbra!', 'Rock-N-Roll') usa a mesma divisão em palavras da indexação",
+                gwTermos.search(List.of("Coimbra!"), 0).getTotalResults() == 1
+                        && gwTermos.search(List.of("Rock-N-Roll"), 0).getTotalResults() == 1);
+        gwTermos.shutdown();
+        UnicastRemoteObject.unexportObject(b3, true);
+
         // ---------------- Recuperação da Gateway ----------------
         queue.addURLs(List.of("http://pendente.pt"));
         gw.shutdown(); // simula a avaria da Gateway

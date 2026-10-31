@@ -54,4 +54,13 @@ public final class Config {
     public int getInt(String key) {
         return Integer.parseInt(get(key));
     }
+
+    /**
+     * Igual a {@link #getInt(String)}, mas devolve {@code defaultValue} se a chave
+     * não existir (para chaves opcionais, acrescentadas depois dos ficheiros de cada máquina).
+     */
+    public int getInt(String key, int defaultValue) {
+        String value = props.getProperty(key);
+        return value == null ? defaultValue : Integer.parseInt(value.trim());
+    }
 }

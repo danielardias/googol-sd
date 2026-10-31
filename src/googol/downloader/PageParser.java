@@ -1,6 +1,7 @@
 package googol.downloader;
 
 import googol.common.PageData;
+import googol.common.Tokenizer;
 
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -8,7 +9,6 @@ import org.jsoup.nodes.Element;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -35,12 +35,8 @@ public final class PageParser {
         // Palavras: título + texto, em minúsculas, partidas em tudo o que não é
         // letra ou algarismo (assim "Coimbra!" e "coimbra," dão "coimbra").
         // \p{L} = qualquer letra (inclui acentos: "ção"), \p{N} = qualquer algarismo.
-        Set<String> words = new HashSet<>();
-        for (String token : (title + " " + bodyText).toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
-            if (!token.isEmpty()) {
-                words.add(token);
-            }
-        }
+        // A mesma regra é usada pela Gateway nos termos de pesquisa (ver Tokenizer).
+        Set<String> words = new HashSet<>(Tokenizer.tokens(title + " " + bodyText));
 
         // Citação: as primeiras palavras do texto, tal como aparecem na página.
         String[] parts = bodyText.trim().split("\\s+");

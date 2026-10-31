@@ -117,6 +117,10 @@ public class Downloader {
                 sleepQuietly(retryDelayMs);
             } catch (InterruptedException e) {
                 return;
+            } catch (RuntimeException e) {
+                // Nunca deixar uma thread de download morrer por um erro inesperado numa página.
+                System.out.println(logPrefix + "Erro inesperado (" + e.getClass().getSimpleName() + "): "
+                        + e.getMessage() + ". A continuar.");
             }
         }
     }
@@ -127,8 +131,8 @@ public class Downloader {
         try {
             Document doc = Jsoup.connect(url).userAgent(USER_AGENT).timeout(timeoutMs).get();
             page = PageParser.parse(url, doc, citationWords);
-        } catch (IOException | IllegalArgumentException e) {
-            // Página inexistente, sem resposta, ou que não é HTML (PDF, imagem...): ignora.
+        } catch (IOException | RuntimeException e) {
+            // Página inexistente, sem resposta, que não é HTML (PDF, imagem...) ou mal formada: ignora.
             System.out.println(logPrefix + "Ignorado " + url + " (" + e.getClass().getSimpleName() + ")");
             return;
         }

@@ -77,6 +77,7 @@ Chaves principais:
 | `downloader.id` / `downloader.threads` | Nome deste Downloader e nº de downloads em paralelo |
 | `downloader.barrels` | Barrels que têm de receber todas as páginas (`barrel1,barrel2`) |
 | `client.retry.attempts` / `client.retry.delay.ms` | Tentativas do cliente quando a Gateway falha |
+| `gateway.save.interval.ms` | De quanto em quanto tempo a Gateway grava a fila (opcional; 1000 ms por omissão) |
 
 ## 5. Executar num só PC
 
@@ -164,7 +165,7 @@ java -cp "out;lib\*" googol.gateway.GatewayTeste
 java -cp "out;lib\*" googol.downloader.DownloaderTeste
 java -cp "out;lib\*" googol.client.ClientTeste
 ```
-Cada um termina com `Total: N PASS, 0 FAIL` (14 + 20 + 20 + 11 = 65 testes).
+Cada um termina com `Total: N PASS, 0 FAIL` (14 + 24 + 20 + 11 = 69 testes).
 Os testes usam portos próprios (1196–1199) e pastas temporárias: **não interferem**
 com os dados do sistema, mas não devem correr ao mesmo tempo que a Gateway
 se esta usar um desses portos.
