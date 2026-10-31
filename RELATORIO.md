@@ -97,8 +97,8 @@ Seguimos a primeira divisão proposta no enunciado:
 
 | Elemento | Responsabilidade |
 |---|---|
-| Daniela Ramos Dias (2024209417) | Downloaders e componente de reliable multicast dos Barrels |
-| Diogo Filipe Samouco Silva (2024216734) | Gateway e componente RMI dos Barrels |
+| Daniela Ramos Dias (2024209417) | Gateway e componente RMI dos Barrels |
+| Diogo Filipe Samouco Silva (2024216734) | Downloaders e componente de reliable multicast dos Barrels |
 
 Na prática, os dois elementos acompanharam o desenvolvimento de todos os componentes e realizaram os testes em conjunto.
 
